@@ -70,31 +70,32 @@ class SingleLinkedList {
         // Оператор сравнения итераторов (в роли второго аргумента выступает константный итератор)
         // Два итератора равны, если они ссылаются на один и тот же элемент списка либо на end()
         [[nodiscard]] bool operator==(const BasicIterator<const Type>& rhs) const noexcept {
-            return node_ == rhs.node_ ? 1:0;
+            return node_ == rhs.node_;
         }
 
         // Оператор проверки итераторов на неравенство
         // Противоположен !=
         [[nodiscard]] bool operator!=(const BasicIterator<const Type>& rhs) const noexcept {
-            return *this == rhs ? 0:1;
+            return !(*this == rhs);
         }
 
         // Оператор сравнения итераторов (в роли второго аргумента итератор)
         // Два итератора равны, если они ссылаются на один и тот же элемент списка либо на end()
         [[nodiscard]] bool operator==(const BasicIterator<Type>& rhs) const noexcept {
-            return node_ == rhs.node_ ? 1:0;
+            return node_ == rhs.node_;
         }
 
         // Оператор проверки итераторов на неравенство
         // Противоположен !=
         [[nodiscard]] bool operator!=(const BasicIterator<Type>& rhs) const noexcept {
-            return *this == rhs ? 0:1;
+            return !(*this == rhs);
         }
 
         // Оператор прединкремента. После его вызова итератор указывает на следующий элемент списка
         // Возвращает ссылку на самого себя
         // Инкремент итератора, не указывающего на существующий элемент списка, приводит к неопределённому поведению
         BasicIterator& operator++() noexcept {
+            assert(node_ != nullptr);
             node_ = node_->next_node;
             return *this;
         }
@@ -113,6 +114,7 @@ class SingleLinkedList {
         // Вызов этого оператора у итератора, не указывающего на существующий элемент списка,
         // приводит к неопределённому поведению
         [[nodiscard]] reference operator*() const noexcept {
+            assert(node_ != nullptr);
             return (node_->value);
         }
 
@@ -120,6 +122,7 @@ class SingleLinkedList {
         // Вызов этого оператора у итератора, не указывающего на существующий элемент списка,
         // приводит к неопределённому поведению
         [[nodiscard]] pointer operator->() const noexcept {
+            assert(node_ != nullptr);
             return &(node_->value);
         }
 
@@ -153,14 +156,14 @@ public:
     // Если список пустой, возвращённый итератор будет равен end()
     // Результат вызова эквивалентен вызову метода cbegin()
     [[nodiscard]] ConstIterator begin() const noexcept {
-        return Iterator(head_.next_node);
+        return cbegin();
     }
 
     // Возвращает константный итератор, указывающий на позицию, следующую за последним элементом односвязного списка
     // Разыменовывать этот итератор нельзя — попытка разыменования приведёт к неопределённому поведению
     // Результат вызова эквивалентен вызову метода cend()
     [[nodiscard]] ConstIterator end() const noexcept {
-        return Iterator(nullptr);
+        return cend();
     }
 
     // Возвращает константный итератор, ссылающийся на первый элемент
@@ -190,7 +193,7 @@ public:
     // Возвращает константный итератор, указывающий на позицию перед первым элементом односвязного списка.
     // Разыменовывать этот итератор нельзя - попытка разыменования приведёт к неопределённому поведению
     [[nodiscard]] ConstIterator before_begin() const noexcept {
-        return Iterator(const_cast<Node*>(&head_));
+        return cbefore_begin();
     }
 
 public:
@@ -200,22 +203,11 @@ public:
     }
 
     SingleLinkedList(std::initializer_list<Type> values) {
-        for (auto it = values.end() - 1; it != values.begin(); --it) {
-            PushFront(*it);
-        }
-        PushFront(*values.begin());
+        Assign(values.begin(), values.end());
     }
 
     SingleLinkedList(const SingleLinkedList& other) {
-        SingleLinkedList tmp;
-        SingleLinkedList tmp1;
-        for (auto value : other) {
-            tmp.PushFront(value);
-        }
-        for (auto value : tmp) {
-            tmp1.PushFront(value);
-        }
-        swap(tmp1);
+        Assign(other.begin(), other.end());
     }
 
     /*
@@ -224,15 +216,19 @@ public:
      * Если при создании элемента будет выброшено исключение, список останется в прежнем состоянии
      */
     Iterator InsertAfter(ConstIterator pos, const Type& value) {
+        assert(pos.node_ != nullptr);
         pos.node_->next_node = new Node(value, pos.node_->next_node);
         ++size_;
         return Iterator(pos.node_->next_node);
     }
 
     void PopFront() noexcept {
+        assert(head_.next_node != nullptr);
+        assert(!IsEmpty());
         Node* ptr = head_.next_node->next_node;
         delete head_.next_node;
         head_.next_node = ptr;
+        --size_;
     }
 
     /*
@@ -240,6 +236,8 @@ public:
      * Возвращает итератор на элемент, следующий за удалённым
      */
     Iterator EraseAfter(ConstIterator pos) noexcept {
+        assert(pos.node_ != nullptr);
+        assert(pos.node_->next_node != nullptr);
         Node* ptr = pos.node_->next_node->next_node;
         delete pos.node_->next_node;
         pos.node_->next_node = ptr;
@@ -257,12 +255,8 @@ public:
 
     // Обменивает содержимое списков за время O(1)
     void swap(SingleLinkedList& other) noexcept {
-        Node* tmp_ptr = head_.next_node;
-        size_t tmp_size = size_;
-        head_.next_node = other.head_.next_node;
-        other.head_.next_node = tmp_ptr;
-        size_ = other.size_;
-        other.size_ = tmp_size;
+        std::swap(head_.next_node, other.head_.next_node);
+        std::swap(size_, other.size_);
     }
 
     // Возвращает количество элементов в списке за время O(1)
@@ -272,7 +266,7 @@ public:
 
     // Сообщает, пустой ли список за время O(1)
     bool IsEmpty() const noexcept {
-        return size_ == 0 ? true : false;
+        return size_ == 0;
     }
 
     void PushFront(const Type& value) {
@@ -294,6 +288,21 @@ public:
     }
 
 private:
+
+    template <typename InputIterator>
+    void Assign(InputIterator from, InputIterator to) {
+        SingleLinkedList<Type> tmp;
+        Node** node_ptr = &tmp.head_.next_node;
+        while (from != to) {
+            assert(*node_ptr == nullptr);
+            *node_ptr = new Node(*from, nullptr);
+            ++tmp.size_;
+            node_ptr = &((*node_ptr)->next_node);
+            ++from;
+        }
+        swap(tmp);
+    }
+
     // Фиктивный узел, используется для вставки "перед первым элементом"
     Node head_;
     size_t size_ = 0;
@@ -307,7 +316,7 @@ private:
 
     template <typename Type>
     bool operator==(const SingleLinkedList<Type>& lhs, const SingleLinkedList<Type>& rhs) {
-        return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+        return (&lhs == &rhs) || (lhs.GetSize() == rhs.GetSize() && std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end()));
     }
 
     template <typename Type>
@@ -322,12 +331,12 @@ private:
 
     template <typename Type>
     bool operator<=(const SingleLinkedList<Type>& lhs, const SingleLinkedList<Type>& rhs) {
-        return (lhs < rhs) || (lhs == rhs);
+        return !(rhs < lhs);
     }
 
     template <typename Type>
     bool operator>(const SingleLinkedList<Type>& lhs, const SingleLinkedList<Type>& rhs) {
-        return !(lhs <= rhs);
+        return (rhs < lhs);
     }
 
     template <typename Type>
